@@ -1,5 +1,6 @@
 ﻿using Application.Requests;
 using Application.Services;
+using Application.Shared;
 using Domain.Contracts;
 using Domain.Generals;
 using Microsoft.AspNetCore.SignalR;
@@ -17,26 +18,32 @@ public class ChatHub : Hub<IMessageHandler>
 
     public async Task<Result> CreateChatAsync(ChatHubRequest request)
     {
-        var result = await _chatHubService.CreateAsync(request, Groups, Context);
+        var hubParameters = CreateHubServiceParameters();
+        var result = await _chatHubService.CreateAsync(request,hubParameters);
         return result;
     }
 
     public async Task<Result> JoinToChatAsync(ChatHubRequest? request)
     {
-        var result = await _chatHubService.JoinAsync(request, Clients, Context,Groups);
+        var hubParameters = CreateHubServiceParameters();
+        var result = await _chatHubService.JoinAsync(request, hubParameters);
         return result;
     }
 
     public async Task<Result> SendMessageAsync(string message)
     {
-        var result = await _chatHubService.SendMessageAsync(message, Context, Clients);
+        var hubParameters = CreateHubServiceParameters();
+        var result = await _chatHubService.SendMessageAsync(message, hubParameters);
         return result;
     }
     
     public async Task<Result> DeleteChatAsync(ChatHubRequest request)
     {
-        var result = await _chatHubService.DeleteAsync(request,Groups,Context);
+        var hubParameters = CreateHubServiceParameters();
+        var result = await _chatHubService.DeleteAsync(request, hubParameters);
         return result;
     }
+
+    private HubServiceParameters CreateHubServiceParameters() => new HubServiceParameters(Groups,Context,Clients);
 }
     

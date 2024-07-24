@@ -1,10 +1,10 @@
 ﻿using Application.Requests;
+using Application.Shared;
 using Domain.Contracts;
 using Domain.Generals;
 using Domain.Models;
 using Domain.Repositories;
 using Infrastructure.Cache;
-using Infrastructure.Cash;
 using Infrastructure.Cash.Models;
 using Microsoft.AspNetCore.SignalR;
 
@@ -27,7 +27,7 @@ public class ChatHubService
         _userRepository = userRepository;
     }
     
-    public async Task<Result> CreateAsync(ChatHubRequest request, IGroupManager groups, HubCallerContext hubContext)
+    public async Task<Result> CreateAsync(ChatHubRequest request, HubServiceParameters hubParameters)
     {
         var user = await _userRepository.GetUserByNameAsync(request.UserName);
         if (user.IsFailure)
@@ -41,7 +41,7 @@ public class ChatHubService
         if (result.IsFailure)
             return Result.Failure<string>(result.Error);
 
-        await groups.AddToGroupAsync(hubContext.ConnectionId, request.ChatRoomName);
+        await hubParameters.Group.AddToGroupAsync(hubParameters.HubContext.ConnectionId, request.ChatRoomName);
         var hubCashedContext = new HubChatDataCashing()
         {
             UserId = user.Value.Id,
@@ -49,20 +49,17 @@ public class ChatHubService
             ChatRoomName = request.ChatRoomName,
             UserName = user.Value.Name
         };
-        var cashResult = await _cache.AddToCashAsync(hubContext.ConnectionId, hubCashedContext);
+        var cashResult = await _cache.AddToCashAsync(hubParameters.HubContext.ConnectionId, hubCashedContext);
         return Result.Success("Hub successfully created");
     }
-    public async Task<Result> JoinAsync(ChatHubRequest? context, 
-        IHubCallerClients<IMessageHandler> clients,
-        HubCallerContext hubContext,
-        IGroupManager group)
+    public async Task<Result> JoinAsync(ChatHubRequest? context, HubServiceParameters hubParameters)
     {
         ResultT<HubChatDataCashing?> cashedContext = await 
-            _cache.ReadFromCashAsync<HubChatDataCashing,string>(hubContext.ConnectionId)!;
+            _cache.ReadFromCashAsync<HubChatDataCashing,string>(hubParameters.HubContext.ConnectionId)!;
         
         if (cashedContext!.Value is null)
         {
-            var result = await _cache.AddToCashAsync(hubContext.ConnectionId,context);
+            var result = await _cache.AddToCashAsync(hubParameters.HubContext.ConnectionId,context);
             if (result.IsFailure)
                 return Result.Failure<string>(result.Error);
         }
@@ -72,15 +69,15 @@ public class ChatHubService
             return Result.Failure(new Error(ErrorCodes.NotFounded,
                 $"Chat room by name: {context.ChatRoomName} not founded"));
 
-        await group.AddToGroupAsync(hubContext.ConnectionId, context.ChatRoomName);
-        await clients.Groups(context!.ChatRoomName)
+        await hubParameters.Group.AddToGroupAsync(hubParameters.HubContext.ConnectionId, context.ChatRoomName);
+        await hubParameters.Clients.Groups(context!.ChatRoomName)
             .ReceiveMessage("Chat notificator", $"{context.UserName} joined to chat");
         return Result.Success("The connection was successful");
     }
-    public async Task<Result> SendMessageAsync(string messageForSend, HubCallerContext hubContext,IHubCallerClients<IMessageHandler> clients)
+    public async Task<Result> SendMessageAsync(string messageForSend, HubServiceParameters hubParameters)
     {
         ResultT<HubChatDataCashing?> cashedContext = await 
-            _cache.ReadFromCashAsync<HubChatDataCashing,string>(hubContext.ConnectionId)!;
+            _cache.ReadFromCashAsync<HubChatDataCashing,string>(hubParameters.HubContext.ConnectionId)!;
         
         if (cashedContext!.Value is null)
             return Result.Failure(new Error(ErrorCodes.ValueNull,"It is not possible to send a message because you are not connected to the chat"));
@@ -95,15 +92,15 @@ public class ChatHubService
         if (result.IsFailure)
             return Result.Failure(result.Error);
         
-        await clients.Groups(cashedContext.Value.ChatRoomName)
+        await hubParameters.Clients.Groups(cashedContext.Value.ChatRoomName)
             .ReceiveMessage(cashedContext.Value.UserName, messageForSend);
         
         return Result.Success("The message sent");
     }
-    public async Task<Result> DeleteAsync(ChatHubRequest request, IGroupManager groupManager, HubCallerContext hubContext)
+    public async Task<Result> DeleteAsync(ChatHubRequest request, HubServiceParameters hubParameters)
     {
         ResultT<HubChatDataCashing?> cashedContext = await 
-            _cache.ReadFromCashAsync<HubChatDataCashing,string>(hubContext.ConnectionId)!;
+            _cache.ReadFromCashAsync<HubChatDataCashing,string>(hubParameters.HubContext.ConnectionId)!;
         
         var chatRepositoryResult = await _chatRepository.GetChatByNameAsync(request.ChatRoomName)!;
         
@@ -116,11 +113,10 @@ public class ChatHubService
         Chat chat = chatRepositoryResult.Value!;
         
         var deleteResult = await _chatRepository.DeleteAsync(chat);
-
         if (deleteResult.IsFailure)
             return Result.Failure(deleteResult.Error);
         
-        await groupManager.RemoveFromGroupAsync(hubContext.ConnectionId,chat.Name);
+        await hubParameters.Group.RemoveFromGroupAsync(hubParameters.HubContext.ConnectionId,chat.Name);
         return Result.Success("Chat room has been successfully removed");
     }
 }
