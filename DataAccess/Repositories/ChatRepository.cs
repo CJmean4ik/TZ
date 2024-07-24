@@ -41,8 +41,6 @@ public class ChatRepository : IChatRepository
 
     public async Task<Result> UpdateAsync(Chat entity)
     {
-        try
-        {
             Chat? oldChat = await _db.Chats
                 .Where(w => w.Id == entity.Id)
                 .FirstOrDefaultAsync();
@@ -57,13 +55,7 @@ public class ChatRepository : IChatRepository
             _db.Entry(oldChat).Property(p => p.Name).IsModified = true;
             await _db.SaveChangesAsync();
 
-            return Result.Success("Chat name has been updated");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex);
-            return null;
-        }
+            return Result.Success("Chat name has been updated");     
     }
 
     public async Task<Result> DeleteAsync(Chat entity)
